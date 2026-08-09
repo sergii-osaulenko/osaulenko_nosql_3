@@ -112,12 +112,30 @@ ORDER BY degree DESC;
 CALL {
     MATCH (u:User)
     WITH u, count { (u)-[:RATED]->() } AS degree
-    RETURN
-        'User' AS nodeType,
-        u.userId AS identifier,
-        degree
+    RETURN 'User' AS nodeType,
+           toString(u.userId) AS identifier,
+           degree
     ORDER BY degree DESC
     LIMIT 5
+}
+UNION ALL
+CALL {
+    MATCH (m:Movie)
+    WITH m, count { (m)<-[:RATED]-() } AS degree
+    RETURN 'Movie' AS nodeType,
+           toString(m.movieId) AS identifier,
+           degree
+    ORDER BY degree DESC
+    LIMIT 5
+}
+UNION ALL
+CALL {
+    MATCH (g:Genre)
+    WITH g, count { (g)<-[:HAS_GENRE]-() } AS degree
+    RETURN 'Genre' AS nodeType,
+           g.name AS identifier,
+           degree
+    ORDER BY degree DESC
 }
 RETURN nodeType, identifier, degree
 ORDER BY degree DESC;
