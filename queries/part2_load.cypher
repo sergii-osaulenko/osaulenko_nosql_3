@@ -1,49 +1,153 @@
-// ==========================================
-// КРОК 1: Створення унікальних індексів (Констрейнтів)
-// Створюються ДО завантаження для уникнення дублів та прискорення MERGE
-// ==========================================
-CREATE CONSTRAINT user_id_unique IF NOT EXISTS 
-FOR (u:User) REQUIRE u.userId IS UNIQUE;
+// ============================================================
+// PART 2 — LOAD MOVIELENS 1M DATA
+// ============================================================
 
-CREATE CONSTRAINT movie_id_unique IF NOT EXISTS 
-FOR (m:Movie) REQUIRE m.movieId IS UNIQUE;
 
-CREATE CONSTRAINT genre_name_unique IF NOT EXISTS 
-FOR (g:Genre) REQUIRE g.name IS UNIQUE;
+// ============================================================
+// STEP 1. UNIQUE CONSTRAINTS
+// ============================================================
+//
+// Constraints забезпечують унікальність ідентифікаторів.
+// Вони також створюють backing indexes, які прискорюють
+// пошук User/Movie під час створення RATED relationships.
+//
 
-// ==========================================
-// КРОК 2: Завантаження користувачів
-// ==========================================
-LOAD CSV WITH HEADERS FROM 'file:///users.csv' AS row
-MERGE (u:User {userId: toInteger(row.userId)})
-ON CREATE SET 
+CREATE CONSTRAINT user_id_unique IF NOT EXISTS
+FOR (u:User)
+REQUIRE u.userId IS UNIQUE;
+
+CREATE CONSTRAINT movie_id_unique IF NOT EXISTS
+FOR (m:Movie)
+REQUIRE m.movieId IS UNIQUE;
+
+CREATE CONSTRAINT genre_name_unique IF NOT EXISTS
+FOR (g:Genre)
+REQUIRE g.name IS UNIQUE;
+
+
+// ============================================================
+// STEP 2. LOAD USERS
+// ============================================================
+//
+// MovieLens 1M містить 6,040 користувачів.
+//
+// ZIP-код навмисно не імпортуємо: він не використовується
+// у графових запитах цього завдання.
+//
+
+LOAD CSV WITH HEADERS
+FROM 'file:///users.csv'
+AS row
+
+MERGE (u:User {
+    userId: toInteger(row.userId)
+})
+
+ON CREATE SET
     u.gender = row.gender,
     u.age = toInteger(row.age),
     u.occupation = toInteger(row.occupation);
 
-// ==========================================
-// КРОК 3: Завантаження фільмів та жанрів
-// ==========================================
-LOAD CSV WITH HEADERS FROM 'file:///movies.csv' AS row
-MERGE (m:Movie {movieId: toInteger(row.movieId)})
-ON CREATE SET 
-    m.title = row.title
+
+// ============================================================
+// STEP 3. LOAD MOVIES AND GENRES
+// ============================================================
+//
+// MovieLens містить 3,883 фільми.
+//
+// Рік випуску витягуємо з кінця title.
+// Наприклад:
+// "Toy Story (1995)" -> 1995
+//
+// Жанри зберігаємо як окремі Genre nodes.
+//
+
+LOAD CSV WITH HEADERS
+FROM 'file:///movies.csv'
+AS row
+
+MERGE (m:Movie {
+    movieId: toInteger(row.movieId)
+})
+
+ON CREATE SET
+    m.title = row.title,
+    m.year =
+        CASE
+            WHEN row.title =~ '.*\\([0-9]{4}\\)$'
+            THEN toInteger(
+                substring(
+                    row.title,
+                    size(row.title) - 5,
+                    4
+                )
+            )
+            ELSE null
+        END
+
 WITH m, row
-// Розбиваємо рядок жанрів "Action|Sci-Fi" на окремі значення
+
 UNWIND split(row.genres, '|') AS genreName
-MERGE (g:Genre {name: genreName})
+
+MERGE (g:Genre {
+    name: genreName
+})
+
 MERGE (m)-[:HAS_GENRE]->(g);
 
-// ==========================================
-// КРОК 4: Завантаження оцінок (Ребер RATED) батчами через APOC
-// ==========================================
+
+// ============================================================
+// STEP 4. LOAD RATINGS IN BATCHES
+// ============================================================
+//
+// MovieLens 1M містить 1,000,209 ratings.
+//
+// Використовуємо APOC periodic iterate, щоб не виконувати
+// весь імпорт в одній великій транзакції.
+//
+// batchSize = 10,000
+// parallel = false — безпечніше для створення relationships.
+//
+
 CALL apoc.periodic.iterate(
-  "LOAD CSV WITH HEADERS FROM 'file:///ratings.csv' AS row RETURN row",
-  "MATCH (u:User {userId: toInteger(row.userId)})
-   MATCH (m:Movie {movieId: toInteger(row.movieId)})
-   MERGE (u)-[r:RATED]->(m)
-   ON CREATE SET 
-       r.rating = toInteger(row.rating),
-       r.timestamp = toInteger(row.timestamp)",
-  {batchSize: 10000, iterateList: true, parallel: false}
-);
+    "LOAD CSV WITH HEADERS
+     FROM 'file:///ratings.csv'
+     AS row
+     RETURN row",
+
+    "MATCH (u:User {
+         userId: toInteger(row.userId)
+     })
+
+     MATCH (m:Movie {
+         movieId: toInteger(row.movieId)
+     })
+
+     MERGE (u)-[r:RATED]->(m)
+
+     ON CREATE SET
+         r.rating = toInteger(row.rating),
+         r.timestamp = toInteger(row.timestamp)",
+
+    {
+        batchSize: 10000,
+        batchMode: "BATCH",
+        parallel: false
+    }
+)
+
+YIELD
+    batches,
+    total,
+    timeTaken,
+    committedOperations,
+    failedOperations,
+    failedBatches
+
+RETURN
+    batches,
+    total,
+    timeTaken,
+    committedOperations,
+    failedOperations,
+    failedBatches;
