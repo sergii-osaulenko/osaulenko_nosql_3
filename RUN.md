@@ -38,7 +38,11 @@ Run Part 5 section-by-section. The practical evidence in `evidence/` was capture
 
 ## Submission
 
-The main explanatory document is `README.md`. It contains:
+The main explanatory document is `README.md`.
+
+For Part 5 visualization evidence, `queries/part5_gds.cypher` contains explicit
+Browser visualization queries that should be run before the cleanup statements.
+The corresponding verified screenshots are stored in `evidence/`. It contains:
 - answers to the original questions;
 - practical results;
 - algorithm interpretations;
