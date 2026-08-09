@@ -1,102 +1,192 @@
-// ====================================================================
-// 5.1. PageRank НА ГРАФІ ФІЛЬМІВ
-// ====================================================================
-// Крок 1: Матеріалізація ребер фільм-фільм
+// Part 5 — GDS: PageRank, Louvain, Dijkstra
+// Final reproducible version based on the successful local Neo4j Browser run.
+// GDS observed in the practical run: 2026.06.0.
+//
+// Important reproducibility choice:
+// all top-50,000 materializations use a deterministic tie-breaker after
+// weight DESC. Application IDs are used instead of deprecated id().
+
+// ============================================================
+// 5.1 PageRank — Movie co-rating graph
+// ============================================================
+
 MATCH (m1:Movie)<-[r1:RATED]-(u:User)-[r2:RATED]->(m2:Movie)
-WHERE r1.rating >= 4 AND r2.rating >= 4 AND id(m1) < id(m2)
+WHERE r1.rating >= 4
+  AND r2.rating >= 4
+  AND m1.movieId < m2.movieId
 WITH m1, m2, count(u) AS weight
-WHERE size([(m1)<-[:RATED]-() | 1]) > 20
-  AND size([(m2)<-[:RATED]-() | 1]) > 20
+WHERE count { (m1)<-[:RATED]-() } > 20
+  AND count { (m2)<-[:RATED]-() } > 20
 WITH m1, m2, weight
-ORDER BY weight DESC
+ORDER BY weight DESC, m1.movieId ASC, m2.movieId ASC
 LIMIT 50000
-MERGE (m1)-[co:CO_RATED]-(m2)
+MERGE (m1)-[co:CO_RATED]->(m2)
 SET co.weight = weight;
 
-// Крок 2: Проєкція в пам'ять GDS
 CALL gds.graph.project(
   'movieGraph',
   'Movie',
-  { CO_RATED: { orientation: 'UNDIRECTED', properties: 'weight' } }
+  {CO_RATED: {orientation: 'UNDIRECTED', properties: 'weight'}}
 )
-YIELD graphName, nodeCount, relationshipCount;
+YIELD graphName, nodeCount, relationshipCount
+RETURN graphName, nodeCount, relationshipCount;
 
-// Крок 3: Запуск PageRank
-CALL gds.pageRank.stream('movieGraph', {
-  relationshipWeightProperty: 'weight'
-})
+CALL gds.pageRank.stream(
+  'movieGraph',
+  {relationshipWeightProperty: 'weight', dampingFactor: 0.85}
+)
 YIELD nodeId, score
-RETURN gds.util.asNode(nodeId).title AS movieTitle, round(score, 4) AS pageRankScore
-ORDER BY score DESC
-LIMIT 10;
+RETURN gds.util.asNode(nodeId).movieId AS movieId,
+       gds.util.asNode(nodeId).title AS title,
+       score
+ORDER BY score DESC, movieId ASC
+LIMIT 20;
 
-// Крок 4: Очищення
 CALL gds.graph.drop('movieGraph');
-MATCH ()-[co:CO_RATED]-() DELETE co;
+MATCH ()-[co:CO_RATED]->() DELETE co;
 
 
-// ====================================================================
-// 5.2. ВИЯВЛЕННЯ СПІЛЬНОТ (LOUVAIN) НА ГРАФІ КОРИСТУВАЧІВ
-// ====================================================================
-// Крок 1: Матеріалізація ребер схожості користувачів
+// ============================================================
+// 5.2 Louvain — User similarity graph
+// ============================================================
+
 MATCH (u1:User)-[r1:RATED]->(m:Movie)<-[r2:RATED]-(u2:User)
-WHERE r1.rating >= 4 AND r2.rating >= 4 AND id(u1) < id(u2)
+WHERE r1.rating >= 4
+  AND r2.rating >= 4
+  AND u1.userId < u2.userId
 WITH u1, u2, count(m) AS weight
-ORDER BY weight DESC
+ORDER BY weight DESC, u1.userId ASC, u2.userId ASC
 LIMIT 50000
-MERGE (u1)-[sim:SIMILAR]-(u2)
+MERGE (u1)-[sim:SIMILAR]->(u2)
 SET sim.weight = weight;
 
-// Крок 2: Проєкція в пам'ять
 CALL gds.graph.project(
   'userSimilarity',
   'User',
-  { SIMILAR: { orientation: 'UNDIRECTED', properties: 'weight' } }
+  {SIMILAR: {orientation: 'UNDIRECTED', properties: 'weight'}}
 )
-YIELD graphName, nodeCount, relationshipCount;
+YIELD graphName, nodeCount, relationshipCount
+RETURN graphName, nodeCount, relationshipCount;
 
-// Крок 3: Запуск Louvain, аналіз кластерів та ТОП-3 жанри для кожної спільноти
-CALL gds.louvain.stream('userSimilarity', {
-  relationshipWeightProperty: 'weight'
-})
+CALL gds.louvain.stats(
+  'userSimilarity',
+  {relationshipWeightProperty: 'weight', concurrency: 1}
+)
+YIELD communityCount, modularity
+RETURN communityCount, modularity;
+
+CALL gds.louvain.stream(
+  'userSimilarity',
+  {relationshipWeightProperty: 'weight', concurrency: 1}
+)
 YIELD nodeId, communityId
-WITH communityId, collect(gds.util.asNode(nodeId)) AS users, count(*) AS communitySize
-ORDER BY communitySize DESC
+WITH communityId, count(*) AS communitySize
+RETURN communityId, communitySize
+ORDER BY communitySize DESC, communityId ASC
+LIMIT 10;
+
+CALL gds.louvain.stream(
+  'userSimilarity',
+  {relationshipWeightProperty: 'weight', concurrency: 1}
+)
+YIELD nodeId, communityId
+WITH communityId, collect(gds.util.asNode(nodeId)) AS communityUsers
+WITH communityId, communityUsers
+ORDER BY size(communityUsers) DESC, communityId ASC
 LIMIT 10
-UNWIND users AS u
+UNWIND communityUsers AS u
 MATCH (u)-[r:RATED]->(m:Movie)-[:HAS_GENRE]->(g:Genre)
 WHERE r.rating >= 4
-WITH communityId, communitySize, g.name AS genre, count(*) AS genreCount
-ORDER BY communityId, genreCount DESC
-WITH communityId, communitySize, collect(genre)[..3] AS top3Genres
-RETURN communityId, communitySize, top3Genres
-ORDER BY communitySize DESC;
+WITH communityId, g.name AS genre, count(*) AS highRatings
+ORDER BY communityId ASC, highRatings DESC, genre ASC
+WITH communityId,
+     collect({genre: genre, highRatings: highRatings})[0..3] AS topGenres
+RETURN communityId, topGenres
+ORDER BY communityId ASC;
 
-// Крок 4: Очищення (Залишаємо ребра SIMILAR для задачі 5.3)
 CALL gds.graph.drop('userSimilarity');
+MATCH ()-[sim:SIMILAR]->() DELETE sim;
 
 
-// ====================================================================
-// 5.3. НАЙКОРОТШИЙ ШЛЯХ (DIJKSTRA) МІЖ КОРИСТУВАЧАМИ
-// ====================================================================
-// Крок 1: Створення проєкції з існуючих ребер SIMILAR
+// ============================================================
+// 5.3 Dijkstra — weighted shortest path between users
+// SIMILAR.weight = shared high-rated movies.
+// cost = 1 / weight, so stronger similarity means lower path cost.
+// ============================================================
+
+MATCH (u1:User)-[r1:RATED]->(m:Movie)<-[r2:RATED]-(u2:User)
+WHERE r1.rating >= 4
+  AND r2.rating >= 4
+  AND u1.userId < u2.userId
+WITH u1, u2, count(m) AS weight
+ORDER BY weight DESC, u1.userId ASC, u2.userId ASC
+LIMIT 50000
+MERGE (u1)-[sim:SIMILAR]->(u2)
+SET sim.weight = weight,
+    sim.cost = 1.0 / weight;
+
 CALL gds.graph.project(
   'userGraph',
   'User',
-  { SIMILAR: { orientation: 'UNDIRECTED', properties: 'weight' } }
+  {SIMILAR: {orientation: 'UNDIRECTED', properties: 'cost'}}
 )
-YIELD graphName, nodeCount, relationshipCount;
+YIELD graphName, nodeCount, relationshipCount
+RETURN graphName, nodeCount, relationshipCount;
 
-// Крок 2: Пошук найкоротшого шляху між користувачем 1 та 100
-MATCH (u1:User {userId: 1}), (u2:User {userId: 100})
-CALL gds.shortestPath.dijkstra.stream('userGraph', {
-  sourceNode: id(u1),
-  targetNode: id(u2),
-  relationshipWeightProperty: 'weight'
-})
-YIELD index, sourceNode, targetNode, totalCost, nodeIds, costs, path
-RETURN totalCost, [nodeId in nodeIds | gds.util.asNode(nodeId).userId] AS userPath;
+// Selected connected pair observed in the practical top-50k graph.
+MATCH (source:User {userId: 4169}),
+      (target:User {userId: 4277})
+CALL gds.shortestPath.dijkstra.stream(
+  'userGraph',
+  {
+    sourceNode: source,
+    targetNodes: target,
+    relationshipWeightProperty: 'cost'
+  }
+)
+YIELD index, sourceNode, targetNode, totalCost, nodeIds, costs
+RETURN index,
+       gds.util.asNode(sourceNode).userId AS sourceUser,
+       gds.util.asNode(targetNode).userId AS targetUser,
+       totalCost,
+       size(nodeIds) - 1 AS hops,
+       [nodeId IN nodeIds | gds.util.asNode(nodeId).userId] AS userPath,
+       costs;
 
-// Крок 3: Фінальне очищення
+// Multi-pair small-world check
+UNWIND [
+  [4169, 4277],
+  [2237, 3658],
+  [5054, 5047],
+  [3512, 4279],
+  [2244, 5239],
+  [5636, 5684],
+  [1119, 3681],
+  [5809, 5077],
+  [817, 4484],
+  [5458, 5722]
+] AS pair
+MATCH (source:User {userId: pair[0]}),
+      (target:User {userId: pair[1]})
+CALL gds.shortestPath.dijkstra.stream(
+  'userGraph',
+  {
+    sourceNode: source,
+    targetNodes: target,
+    relationshipWeightProperty: 'cost'
+  }
+)
+YIELD sourceNode, targetNode, totalCost, nodeIds
+RETURN gds.util.asNode(sourceNode).userId AS sourceUser,
+       gds.util.asNode(targetNode).userId AS targetUser,
+       totalCost,
+       size(nodeIds) - 1 AS hops,
+       [nodeId IN nodeIds | gds.util.asNode(nodeId).userId] AS userPath
+ORDER BY hops ASC, sourceUser ASC, targetUser ASC;
+
 CALL gds.graph.drop('userGraph');
-MATCH ()-[sim:SIMILAR]-() DELETE sim;
+MATCH ()-[sim:SIMILAR]->() DELETE sim;
+
+// Final cleanup verification
+MATCH ()-[r:SIMILAR]->()
+RETURN count(r) AS similarRelationships;
