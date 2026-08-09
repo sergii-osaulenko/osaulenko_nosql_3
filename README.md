@@ -777,14 +777,18 @@ queries/part5_gds.cypher
 
 ---
 
-# 11. Файли submission
+# 11. Файли
 
 ```text
-docker-compose.yml
 convert.py
+docker-compose.yml
+.gitignore
 
 import/
   MovieLens_README.txt
+  movies.csv
+  ratings.csv
+  users.csv
 
 queries/
   part2_load.cypher
@@ -796,20 +800,10 @@ results/
   part3_results.md
   part4_results.md
   part5_results.md
-  part3_q1.csv
-  part3_q6.csv
 
 evidence/
   actual Neo4j Browser screenshots
 
-docs/
-  FINAL_REPORT.pdf
-  FINAL_REPORT.docx
-
 README.md
 RUN.md
-CHECKLIST.md
-MANIFEST.md
-DATASET_NOTICE.md
-REQUIREMENTS_MATRIX.md
 ```

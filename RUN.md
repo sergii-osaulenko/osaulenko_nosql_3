@@ -1,4 +1,4 @@
-# RUN — Final submission
+# RUN
 
 ## Local Docker
 
