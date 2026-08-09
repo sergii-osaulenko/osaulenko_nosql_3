@@ -86,16 +86,23 @@ LIMIT 20;
 
 
 // Q6. Shortest connection between user 1 and user 2 through RATED edges.
-// The path is intentionally undirected: the task asks for a connection,
-// not a directionally valid recommendation path.
-MATCH (u1:User {userId: 1}), (u2:User {userId: 2})
+//
+// Each hop represents one RATED relationship.
+// Therefore, a path of length 2 means:
+// User -> Movie -> User.
+//
+// The search is limited to 10 relationships to avoid an
+// unnecessarily expensive unrestricted traversal.
+
+MATCH (u1:User {userId: 1})
+WITH u1
+MATCH (u2:User {userId: 2})
 MATCH p = shortestPath((u1)-[:RATED*..10]-(u2))
 RETURN length(p) AS pathLength,
        [n IN nodes(p) |
           CASE
-            WHEN n:User THEN 'User ' + toString(n.userId)
-            WHEN n:Movie THEN n.title
-            WHEN n:Genre THEN 'Genre ' + n.name
-            ELSE toString(id(n))
+              WHEN n:User THEN 'User ' + toString(n.userId)
+              WHEN n:Movie THEN n.title
+              WHEN n:Genre THEN 'Genre ' + n.name
           END
        ] AS path;
