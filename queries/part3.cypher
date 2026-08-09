@@ -41,8 +41,11 @@ ORDER BY movieId;
 // Q4. Genres whose movies have consistently high ratings.
 // A minimum of 100 ratings prevents very small samples from dominating.
 MATCH (g:Genre)<-[:HAS_GENRE]-(m:Movie)<-[r:RATED]-()
-WITH g, avg(r.rating) AS avgRating, count(r) AS ratingCount
-WHERE ratingCount >= 100 AND avgRating >= 4.0
+WITH g,
+     avg(r.rating) AS avgRating,
+     count(r) AS ratingCount
+WHERE ratingCount >= 100
+  AND avgRating >= 4.0
 RETURN g.name AS genre,
        round(avgRating * 100.0) / 100.0 AS avgRating,
        ratingCount
