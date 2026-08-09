@@ -666,9 +666,9 @@ GROUP BY movie_id;
 
 Neo4j не є автоматично швидшим за SQL для всього.
 
-**Graph виграє, коли основна цінність запиту — структура зв'язків.**
+Graph виграє, коли основна цінність запиту — **структура зв'язків.**
 
-**SQL виграє, коли основна цінність — масова таблична агрегація.**
+SQL виграє, коли основна цінність — **масова таблична агрегація.**
 
 ---
 
@@ -709,7 +709,7 @@ Top-50k — компроміс між розміром graph projection і зб�
 
 # 8. Фінальні висновки
 
-1. **Модель `User–RATED–Movie–HAS_GENRE–Genre` добре відповідає recommendation domain.**
+1. Модель `User–RATED–Movie–HAS_GENRE–Genre` добре відповідає recommendation domain.
 2. `RATED` як relationship є компактнішим і природнішим за окремий Rating node для MovieLens 1M.
 3. `Genre` як node робить genre traversal та aggregation природними.
 4. Dataset коректно представлений у графі: **6,040 Users, 3,883 Movies, 18 Genres, 1,000,209 Ratings**.
