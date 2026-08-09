@@ -109,7 +109,7 @@ MERGE (m)-[:HAS_GENRE]->(g);
 // parallel = false — безпечніше для створення relationships.
 //
 
-CALL apoc.periodic.iterate(
+CALL {...} IN TRANSACTIONS(
     "LOAD CSV WITH HEADERS
      FROM 'file:///ratings.csv'
      AS row
