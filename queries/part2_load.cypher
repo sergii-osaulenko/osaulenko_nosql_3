@@ -2,7 +2,6 @@
 // PART 2 — LOAD MOVIELENS 1M DATA
 // ============================================================
 
-
 // ============================================================
 // STEP 1. UNIQUE CONSTRAINTS
 // ============================================================
@@ -53,7 +52,7 @@ ON CREATE SET
 // STEP 3. LOAD MOVIES AND GENRES
 // ============================================================
 //
-// MovieLens містить 3,883 фільми.
+// MovieLens 1M містить 3,883 фільми.
 //
 // Рік випуску витягуємо з кінця title.
 // Наприклад:
@@ -102,52 +101,31 @@ MERGE (m)-[:HAS_GENRE]->(g);
 //
 // MovieLens 1M містить 1,000,209 ratings.
 //
-// Використовуємо APOC periodic iterate, щоб не виконувати
-// весь імпорт в одній великій транзакції.
+// Використовуємо сучасний Cypher
+// CALL { ... } IN TRANSACTIONS
+// замість deprecated apoc.periodic.iterate.
 //
-// batchSize = 10,000
-// parallel = false — безпечніше для створення relationships.
+// batch size = 10,000 rows
+// Транзакції виконуються послідовно.
 //
 
-CALL {...} IN TRANSACTIONS(
-    "LOAD CSV WITH HEADERS
-     FROM 'file:///ratings.csv'
-     AS row
-     RETURN row",
+LOAD CSV WITH HEADERS
+FROM 'file:///ratings.csv'
+AS row
 
-    "MATCH (u:User {
-         userId: toInteger(row.userId)
-     })
+CALL (row) {
+    MATCH (u:User {
+        userId: toInteger(row.userId)
+    })
 
-     MATCH (m:Movie {
-         movieId: toInteger(row.movieId)
-     })
+    MATCH (m:Movie {
+        movieId: toInteger(row.movieId)
+    })
 
-     MERGE (u)-[r:RATED]->(m)
+    MERGE (u)-[r:RATED]->(m)
 
-     ON CREATE SET
-         r.rating = toInteger(row.rating),
-         r.timestamp = toInteger(row.timestamp)",
-
-    {
-        batchSize: 10000,
-        batchMode: "BATCH",
-        parallel: false
-    }
-)
-
-YIELD
-    batches,
-    total,
-    timeTaken,
-    committedOperations,
-    failedOperations,
-    failedBatches
-
-RETURN
-    batches,
-    total,
-    timeTaken,
-    committedOperations,
-    failedOperations,
-    failedBatches;
+    ON CREATE SET
+        r.rating = toInteger(row.rating),
+        r.timestamp = toInteger(row.timestamp)
+}
+IN TRANSACTIONS OF 10000 ROWS;
