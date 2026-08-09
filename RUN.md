@@ -44,5 +44,3 @@ The main explanatory document is `README.md`. It contains:
 - algorithm interpretations;
 - Graph vs SQL comparison;
 - final conclusions.
-
-The PDF/DOCX report in `docs/` is a formatted version of the same final analysis.
