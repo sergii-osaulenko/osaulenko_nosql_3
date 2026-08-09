@@ -192,16 +192,16 @@ Top 10:
 
 | movieId | title | avgRating | ratings |
 |---:|---|---:|---:|
-| 745 | Close Shave, A (1995) | 4.5205 | 657 |
-| 50 | Usual Suspects, The (1995) | 4.5171 | 1783 |
-| 904 | Rear Window (1954) | 4.4762 | 1050 |
-| 1212 | Third Man, The (1949) | 4.4521 | 480 |
-| 2762 | Sixth Sense, The (1999) | 4.4063 | 2459 |
-| 908 | North by Northwest (1959) | 4.3840 | 1315 |
-| 593 | Silence of the Lambs, The (1991) | 4.3518 | 2578 |
-| 1252 | Chinatown (1974) | 4.3392 | 1185 |
-| 1267 | Manchurian Candidate, The (1962) | 4.3333 | 765 |
-| 2571 | Matrix, The (1999) | 4.3158 | 2590 |
+| 50 | Usual Suspects, The (1995) | 4.52 | 1783 |
+| 745 | Close Shave, A (1995) | 4.52 | 657 |
+| 904 | Rear Window (1954) | 4.48 | 1050 |
+| 1212 | Third Man, The (1949) | 4.45 | 480 |
+| 2762 | Sixth Sense, The (1999) | 4.41 | 2459 |
+| 908 | North by Northwest (1959) | 4.38 | 1315 |
+| 593 | Silence of the Lambs, The (1991) | 4.35 | 2578 |
+| 1252 | Chinatown (1974) | 4.34 | 1185 |
+| 1267 | Manchurian Candidate, The (1962) | 4.33 | 765 |
+| 2571 | Matrix, The (1999) | 4.32 | 2590 |
 
 **Висновок:** одного лише `avgRating` недостатньо для оцінки якості — кількість ratings також важлива. Наприклад, високий average на сотнях/тисячах оцінок набагато переконливіший.
 
@@ -215,18 +215,18 @@ Top 10:
 
 Top 10:
 
-| userId | gender | age | occupation | fiveStarCount |
-|---:|:---:|---:|---:|---:|
-| 4277 | M | 35 | 16 | 571 |
-| 4169 | M | 50 | 0 | 476 |
-| 3032 | M | 25 | 0 | 466 |
-| 4448 | M | 25 | 14 | 434 |
-| 5100 | M | 50 | 6 | 424 |
-| 1680 | M | 25 | 20 | 406 |
-| 549 | M | 25 | 6 | 402 |
-| 2909 | M | 25 | 7 | 396 |
-| 3391 | M | 18 | 4 | 387 |
-| 1285 | M | 35 | 4 | 377 |
+| userId | gender | age | fiveStarCount |
+|---:|:---:|---:|---:|
+| 4277 | M | 35 | 571 |
+| 4169 | M | 50 | 476 |
+| 3032 | M | 25 | 466 |
+| 4448 | M | 25 | 434 |
+| 5100 | M | 50 | 424 |
+| 1680 | M | 25 | 406 |
+| 549 | M | 25 | 402 |
+| 2909 | M | 25 | 396 |
+| 3391 | M | 18 | 387 |
+| 1285 | M | 35 | 377 |
 
 **Висновок:** User 4277 має найбільше п'ятизіркових оцінок — 571.
 
@@ -419,6 +419,8 @@ weight DESC, stable application IDs ASC
 
 Це важливо для відтворюваності.
 
+> **Materialization vs GDS projection:** у Neo4j materialized 50,000 `CO_RATED` / `SIMILAR` relationships. GDS projects these relationships with `orientation: 'UNDIRECTED'`, тому у projected graph відображається 100,000 traversable relationships — по одному в кожному напрямку.
+
 ---
 
 ## 5.1. PageRank
@@ -432,6 +434,8 @@ movieGraph
 ```
 
 `CO_RATED.weight` = кількість users, які високо оцінили обидва Movies.
+
+Для PageRank до materialization проходить додатковий filter: кожен із двох Movies має мати **понад 20 ratings**. Після цього беруться top-50,000 pairs за `weight DESC` із deterministic tie-breaker.
 
 Фактичні top rows:
 
@@ -452,6 +456,12 @@ movieGraph
 PageRank тут означає **структурну центральність у Movie co-rating graph**, а не просто кількість ratings.
 
 American Beauty займає перше місце, бо має сильні зв'язки з іншими центральними Movies у графі.
+
+### Graph visualization evidence
+
+![Part 5.1 — CO_RATED movie graph](evidence/part5_co_rated_graph.png)
+
+Neo4j Browser visualization of the top 50 materialized `CO_RATED` relationships: **23 Movie nodes / 50 relationships**.
 
 ---
 
@@ -503,6 +513,12 @@ Louvain знаходить communities Users, які щільніше пов'я�
 Кластери не повинні збігатися з одним жанром: користувачі мають змішані смаки. Тому домінування Drama/Comedy/Action у великих communities є індикатором спільних preference patterns, а не доказом того, що community = один жанр.
 
 Modularity `0.1586` показує наявність community structure, але вона не є надзвичайно сильною; граф також містить багато малих communities.
+
+### Graph visualization evidence
+
+![Part 5.2 — SIMILAR user graph](evidence/part5_user_similarity_graph.png)
+
+Neo4j Browser visualization of the top 50 materialized `SIMILAR` relationships: **27 User nodes / 50 relationships**. У цьому screenshot Browser captions для User nodes відображають `age`; user identity is determined by `userId` in the query.
 
 ---
 
@@ -581,6 +597,12 @@ totalCost = 0.0013623978201634877
 
 Коректний висновок: у найбільш зв'язаних частинах similarity graph Users мають короткі chains за taste similarity.
 
+### Graph visualization evidence
+
+![Part 5.3 — Dijkstra path](evidence/part5_dijkstra_graph.png)
+
+Neo4j Browser visualization of the selected direct `SIMILAR` edge between **User 4169** and **User 4277**, with `SIMILAR.weight = 734`.
+
 ---
 
 ## 5.4. Cleanup
@@ -605,7 +627,7 @@ userGraph
 
 ---
 
-# 6. Порівняння Graph vs SQL
+# 6. Graph vs SQL — відповіді на питання частини 6
 
 ## 6.1. Де Graph сильніший?
 
@@ -769,8 +791,11 @@ queries/part5_gds.cypher
 - Louvain statistics;
 - Louvain community sizes;
 - Louvain top genres;
-- Dijkstra;
-- Dijkstra multi-pair;
+- Dijkstra result table;
+- Dijkstra multi-pair result table;
+- Part 5.1 `CO_RATED` graph visualization;
+- Part 5.2 `SIMILAR` graph visualization;
+- Part 5.3 Dijkstra path visualization;
 - final cleanup.
 
 ---
@@ -783,7 +808,7 @@ docker-compose.yml
 .gitignore
 
 import/
-  MovieLens_README.txt
+  MovieLens_README
   movies.csv
   ratings.csv
   users.csv
