@@ -59,38 +59,43 @@ MATCH (target:User {userId: 1})-[tr:RATED]->(shared:Movie)<-[sr:RATED]-(similar:
 WHERE tr.rating >= 4
   AND sr.rating >= 4
   AND similar <> target
+
 WITH target, similar, count(shared) AS sharedHighRated
 WHERE sharedHighRated >= 3
+
 MATCH (similar)-[cr:RATED]->(candidate:Movie)
 WHERE cr.rating >= 4
-  AND NOT EXISTS { MATCH (target)-[:RATED]->(candidate) }
+  AND NOT EXISTS {
+    MATCH (target)-[:RATED]->(candidate)
+  }
+
 WITH candidate,
      count(DISTINCT similar) AS supportingUsers,
      avg(cr.rating) AS supportingAvg,
      max(sharedHighRated) AS strongestTasteOverlap
+
 RETURN candidate.movieId AS movieId,
        candidate.title AS title,
        supportingUsers,
        round(supportingAvg * 100.0) / 100.0 AS supportingAvg,
        strongestTasteOverlap
-ORDER BY supportingUsers DESC, supportingAvg DESC, strongestTasteOverlap DESC
+ORDER BY supportingUsers DESC,
+         supportingAvg DESC,
+         strongestTasteOverlap DESC
 LIMIT 20;
 
 
 // Q6. Shortest connection between user 1 and user 2 through RATED edges.
 // The path is intentionally undirected: the task asks for a connection,
 // not a directionally valid recommendation path.
-
-MATCH (u1:User {userId: 1}),
-      (u2:User {userId: 2})
-
-MATCH p = SHORTEST 1 (u1)-[:RATED]-+(u2)
-
+MATCH (u1:User {userId: 1}), (u2:User {userId: 2})
+MATCH p = shortestPath((u1)-[:RATED*..10]-(u2))
 RETURN length(p) AS pathLength,
        [n IN nodes(p) |
           CASE
             WHEN n:User THEN 'User ' + toString(n.userId)
             WHEN n:Movie THEN n.title
+            WHEN n:Genre THEN 'Genre ' + n.name
             ELSE toString(id(n))
           END
        ] AS path;
